@@ -1,0 +1,89 @@
+package cs455.wireformat;
+//Tyler Decker
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+
+
+public class CrawlerSendsHandoffCompleteness implements Event{
+	private int messageType; //message type 1 - 12
+	private int crawlerId; //crawler id
+	private int uLength; //length of ip address
+	private byte[] url; //URL that needs to be crawled
+	private Protocol t = Protocol.CRAWLER_SENDS_HANDOFF_COMPLETENESS; //able to identify type of event
+
+	public CrawlerSendsHandoffCompleteness(byte[] data) {
+		ByteArrayInputStream baInputStream = new ByteArrayInputStream(data); //byte array input stream
+		DataInputStream din = new DataInputStream(new BufferedInputStream(baInputStream));//get a data input stream
+		//try to populate fields
+		try {
+			messageType = din.readInt();
+			crawlerId = din.readInt();
+			uLength = din.readInt();
+
+			url = new byte[uLength];
+			din.readFully(url);
+
+			baInputStream.close();
+			din.close();
+			
+		} catch (IOException e) {
+			System.out.println(e.getMessage());
+		}
+	}
+	public CrawlerSendsHandoffCompleteness(int node, String URL) {
+		messageType = 5;
+		crawlerId = node;
+		url = URL.getBytes(Charset.forName("UTF-8"));
+		uLength = url.length;
+	}
+	//return byte array of message
+	public byte[] getBytes() {
+		byte[] marshalledBytes = null;
+		ByteArrayOutputStream baOutputStream = new ByteArrayOutputStream();
+		DataOutputStream dout = new DataOutputStream (new BufferedOutputStream(baOutputStream));
+		
+		try {
+			dout.writeInt(messageType);
+			dout.writeInt(crawlerId);
+			
+			dout.writeInt(uLength);
+			dout.write(url);
+			
+			dout.flush();
+		} catch (IOException e) {
+			System.out.println(e.getMessage());
+		}
+		marshalledBytes = baOutputStream.toByteArray();
+		try {
+			baOutputStream.close();
+			dout.close();
+		} catch (IOException e) {
+			System.out.println(e.getMessage());
+		}
+		return marshalledBytes;
+	}
+	//get info string in actual string format
+	public String getURLString() {
+		try {
+			return new String(url, "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			System.out.println(e.getMessage());
+		}
+		return null;
+	}
+	//returns protocol for event
+	public Protocol getType() {
+		return t;
+	} 
+	//returns protocol for event
+	public int getCrawlerId() {
+		return crawlerId;
+	} 
+}

@@ -1,0 +1,119 @@
+package cs455.crawler;
+
+
+import java.net.MalformedURLException;
+import java.util.LinkedList;
+import java.util.Queue;
+
+import cs455.harvester.Crawler;
+
+
+//manages the worker threads for crawling webpages
+public class ThreadPoolManager {
+	
+	private Queue<Worker> availableWorkerQueue; //Queue responsible for managing available workers for tasks
+	private Queue<Task> availableTaskQueue = new LinkedList<Task>(); //Queue responsible for managing available tasks
+	private TaskRegistry registry; //tracks completed tasks
+	private Crawler myCrawler; //crawler parent
+
+	
+	//constructor takes in initialized workers
+	public ThreadPoolManager(Queue<Worker> availableWorkerQueue, Crawler myCrawler) {
+		this.availableWorkerQueue = availableWorkerQueue;
+		this.registry = new TaskRegistry();
+		this.myCrawler = myCrawler;
+	}
+	//add a new task to the available task queue
+	public void addNewTask(Worker worker, Task task) {
+		synchronized(this){
+		synchronized(availableTaskQueue){
+		try {
+			if(myCrawler.checkDomain(task.getURL())){
+					//check if duplicate task, is already in task queue and if the new task is not the same task that spawned it
+					if(!registry.isDuplicateTask(task.getURL())){
+							if(!checkTaskQueue(task) && !task.getParent().getURL().equals(task.getURL())){
+								if(worker != null){ 
+									//writeToFile(new String("Worker " + worker.getId() + " adds: " + task));
+									//System.out.println("Worker " + worker.getId() + " adds: " + task);
+								}
+								this.availableTaskQueue.add(task);
+							}
+					}
+			}
+			else{
+				myCrawler.passOnTask(task);
+			}
+		}catch (MalformedURLException e) {
+			System.out.println("problem checking task for root domain");
+		}
+	  }}
+	}
+
+	public boolean checkTaskQueue(Task task){
+		synchronized(availableTaskQueue){
+		for(Task check : availableTaskQueue){
+			if(check.getURL().equals(task.getURL())) return true;
+		}
+		return false;
+		}
+	}
+	//when initializing the thread pool manager
+	public void addWorker(Worker worker) {
+		synchronized(availableWorkerQueue) {
+			this.availableWorkerQueue.add(worker);
+		}
+	}
+	public void addCompletedTask(Worker worker){
+		
+			synchronized(registry) {
+				//really trying to get rid of duplicate tasks its getting so hard...
+				registry.addCompletedTask(worker.getTask());
+			}
+		
+	}
+	//return a worker that has finished their task to the available worker queue
+	public void returnToPool(Worker worker) {
+
+			synchronized(availableWorkerQueue) {
+				worker.clear();
+				this.availableWorkerQueue.add(worker);
+			}
+	}
+	//thread pool runner
+	public void run() {
+		while(true) {
+			Worker availableWorker;
+			synchronized(availableWorkerQueue) {
+				availableWorker = availableWorkerQueue.poll();
+			}
+			//if we have an available worker we can now check if we have a task that needs doing
+			if(availableWorker != null) {
+				boolean foundTask = false; //task checker
+				while(!foundTask) {
+					Task availableTask;
+					synchronized(availableTaskQueue) {
+						availableTask = availableTaskQueue.poll();
+
+					
+						//if we have a task for the worker to perform then we set the workers task and move on to the next worker/task
+						if(availableTask != null) {
+						
+
+						
+							//assign the task
+							String Url = availableTask.getURL();
+							availableWorker.assign(availableTask);
+
+							System.out.println("Worker " + availableWorker.getId() + " adds completed task: " + Url);
+							addCompletedTask(availableWorker);
+
+							//System.out.println("new task");
+							//move on to next worker
+							foundTask = true;
+						}
+					}
+				}		
+			}
+		}
+	} 
+}

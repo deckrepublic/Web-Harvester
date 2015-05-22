@@ -1,0 +1,29 @@
+README
+
+Tyler Decker
+
+Web Crawler 
+
+When I create a task I call the URL redirect resolver from the execute method in the task class, this is only called by the worker thread, that means my crawler will not connect to links outside of the domain
+
+I interpreted following a MAXIMUM recursion depth of 5 by having the crawler stop adding new tasks from a task when the recursionDepth variable equals 3. Counting up from 0 the depth of 3
+will be 4. When a task has a recursionDepth variable equal to 3 it will extract the url's of the task thus moving to a recursion depth of 5 and variable equal to 4 but will not create new
+task's because if it does then the crawler will extract url's of the task's who have variable equal to 4 and technically that would be following up to a depth of 6. The children of recursion 
+depth 5 are recorded but no new task is created.
+
+I interpreted A broken link as a link that a website has that does not work through the html parser. I dont parse different protocols from http but I will pass in every link with http protocol.
+If the jericho throws an exception from trying to parse a http protocol link that is considered by me a broken link.
+example:  http://www.cs.colostate.edu/~rmm/pubs.html/lexbfs.ps throws an exception, guessing by the file .ps extension. This is a broken link to the parser.
+
+
+It is important to start the 8 crawlers as close together as possible. A bash script works perfectly for this, if they are too seperated in start time then a fail to initialize error will be thrown
+
+ 
+Threadpool is initialized in Crawler.java at line number 56, a for loop that creates a thread until counter reaches thread pool size. The size is set at the constructor 
+Worker thread sleeps at line 79 in Worker.java before returning to the worker queue. My program waits 10 seconds before initialization and then waits 10 seconds to allow the crawlers to finish setting
+up connection, and then one last wait when the crawlers are almost done to allow for any task that may be timing out or just taking a min to finish. Those are done at Crawler.java:line 51 && 80 as
+well as at ThreadPoolManager.java:line 238 
+
+
+
+

@@ -1,0 +1,303 @@
+package cs455.crawler;
+//Tyler Decker
+
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+//import java.nio.file.Files;
+//import java.nio.file.Path;
+//import java.nio.file.Paths;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+
+import net.htmlparser.jericho.*;
+
+public class Task {
+	
+	//self explanatory
+	private String name;
+	private String URL;
+	private int recursionDepth;
+	
+	
+	private Task parent; //parent Task for graph, the task that spawned this task
+	private LinkedList<Task> children; //the children of this task for the graph, what this task spawns
+	private LinkedList<String> brokenLinks; //tracker of broken links
+	private HashSet<String> inEdges;
+	//constructor
+	public Task(String name, String URL, int recursionDepth) {
+		this.name = name;
+		this.URL = URL;
+		this.recursionDepth = recursionDepth;
+		Task parent = new Task(null, "Head", "root", 0);
+		this.parent = parent;
+		brokenLinks = new LinkedList<String>();
+		children = new LinkedList<Task>();
+		inEdges = new HashSet<String>();
+	}
+	//constructor
+	public Task(Task parent, String name, String URL, int recursionDepth) {
+		this.name = name;
+		this.URL = URL;
+		this.recursionDepth = recursionDepth;
+		this.parent = parent;
+		brokenLinks = new LinkedList<String>();
+		children = new LinkedList<Task>();
+		inEdges = new HashSet<String>();
+	}
+	//traverse the url get all links and create new tasks based on links
+	public LinkedList<Task> execute() {
+		LinkedList<Task> urls = new LinkedList<Task>();
+		this.fixRedirect();
+		List<Element> aTags = urlExtractor(URL);
+		//check if urls were extracted
+		if(aTags != null){
+		//go through each url extracted and add to new task list
+			for (Element aTag : aTags) {
+			//check for links with a document example: .html .pdf ect
+			//first check to see if link is other than http:
+				if(aTag.getAttributeValue("href") != null){	//checking to make sure there are any links in the page
+					if((!aTag.getAttributeValue("href").contains("http:") && aTag.getAttributeValue("href").contains("://")) || aTag.getAttributeValue("href").contains("#")){
+						//in this case do nothing
+					}
+					//this will be some sort of file like .html .pdf ect.
+					else if(!aTag.getAttributeValue("href").contains("http:")){
+							
+							String name = aTag.getAttributeValue("href");
+							String urladder;
+							if(getURL().contains("~")){
+								if(!getURL().endsWith("/")) {
+									urladder = getURL() + "/";
+								}else{
+									urladder = getURL();
+								}
+							}else{
+								urladder = getURL().substring(0, getURL().lastIndexOf("/") + 1);
+							}
+							//urladder = normalize(urladder);
+							String task = normalize(urladder + name);
+							if (task.indexOf("?") > 0) task = task.substring(0, task.lastIndexOf("?"));
+							//add the url but do not if recursion depth is over 5
+							if(recursionDepth + 1 < 2) urls.add(
+								new Task(this, name, task, recursionDepth + 1));
+							else {
+								children.add(new Task(this, aTag.getAttributeValue("href"), normalize(task), recursionDepth + 1));
+							}
+				
+					}else{
+						String task = aTag.getAttributeValue("href");
+						//remove query id from url
+						try{
+							if (task.indexOf("?") > 0) task = task.substring(0, task.lastIndexOf("?"));
+						}catch(StringIndexOutOfBoundsException e){
+							System.out.println("debug this shit");
+						}
+						//add the url but do not if recursion depth is over 5
+						if(recursionDepth + 1 < 2) urls.add(
+								new Task(this, aTag.getAttributeValue("href"), normalize(task), recursionDepth + 1));
+						else{
+							children.add(new Task(this, aTag.getAttributeValue("href"), normalize(task), recursionDepth + 1));
+						}
+							
+						
+					}
+				}
+			}
+		}
+		//set the children
+		if(recursionDepth + 1 < 2) children = urls;
+
+
+		//return the new tasks
+		return urls;
+	}
+	//fix the redirect of a task
+	public void fixRedirect(){
+		synchronized(URL){
+		// disable verbose log statements
+		Config.LoggerProvider = LoggerProvider.DISABLED;
+		
+		try {
+			  HttpURLConnection con = (HttpURLConnection)(new URL(URL).openConnection());
+			  con.connect();
+			  // this is the actual url, the page is redirected to (if there is a redirect).
+			  String redirectedUrl = con.getURL().toString();
+			  // instead of passing the URL, pass the input stream.
+			  
+				  URL = redirectedUrl;	
+			  
+
+		} catch (Exception e) { // in case of malformed url
+			if(URL != "root"){
+				brokenLinks.add(URL);
+				System.err.println("found a broken link: " + parent.getURL() + " " + URL + " " + e.getMessage());
+			}		
+		}
+		}
+	}
+	//to extract URLs of a given web pages
+	public List<Element> urlExtractor(String url) {
+
+		// disable verbose log statements
+		Config.LoggerProvider = LoggerProvider.DISABLED;
+		List<Element> aTags = null;
+		try {
+			  HttpURLConnection con = (HttpURLConnection)(new URL(url).openConnection());
+			  con.connect();
+			  InputStream is = con.getInputStream();
+			  // this is the actual url, the page is redirected to (if there is a redirect).
+
+			  Source source = new Source(is);
+
+			// get all 'a' tags
+			aTags = source.getAllElements(HTMLElementName.A);
+
+		} catch (IOException e) { // in case of malformed url
+			brokenLinks.add(url);
+			System.err.println("found a broken link: " + URL + " " + e.getMessage());
+		}
+		return aTags;
+	}
+	/**
+	* Licensed under http://www.apache.org/licenses/LICENSE-2.0
+	*/
+	public static String normalize(String normalized) {
+	 
+	        if (normalized == null) {
+	            return null;
+	        }
+	 
+	        // If the buffer begins with "./" or "../", the "." or ".." is removed.
+	        if (normalized.startsWith("./")) {
+	            normalized = normalized.substring(1);
+	        } else if (normalized.startsWith("../")) {
+	            normalized = normalized.substring(2);
+	        } else if (normalized.startsWith("..")) {
+	            normalized = normalized.substring(2);
+	        }
+	 
+	        // All occurrences of "/./" in the buffer are replaced with "/"
+	        int index = -1;
+	        while ((index = normalized.indexOf("/./")) != -1) {
+	            normalized = normalized.substring(0, index) + normalized.substring(index + 2);
+	        }
+	 
+	        // If the buffer ends with "/.", the "." is removed.
+	        if (normalized.endsWith("/.")) {
+	            normalized = normalized.substring(0, normalized.length() - 1);
+	        }
+	 
+	        int startIndex = 0;
+	 
+	        // All occurrences of "/<segment>/../" in the buffer, where ".."
+	        // and <segment> are complete path segments, are iteratively replaced
+	        // with "/" in order from left to right until no matching pattern remains.
+	        // If the buffer ends with "/<segment>/..", that is also replaced
+	        // with "/".  Note that <segment> may be empty.
+	        while ((index = normalized.indexOf("/../", startIndex)) != -1) {
+	            int slashIndex = normalized.lastIndexOf('/', index - 1);
+	            if (slashIndex >= 0) {
+	                normalized = normalized.substring(0, slashIndex) + normalized.substring(index + 3);
+	            } else {
+	                startIndex = index + 3;
+	            }
+	        }
+	        if (normalized.endsWith("/..")) {
+	            int slashIndex = normalized.lastIndexOf('/', normalized.length() - 4);
+	            if (slashIndex >= 0) {
+	                normalized = normalized.substring(0, slashIndex + 1);
+	            }
+	        }
+	 
+	        // All prefixes of "<segment>/../" in the buffer, where ".."
+	        // and <segment> are complete path segments, are iteratively replaced
+	        // with "/" in order from left to right until no matching pattern remains.
+	        // If the buffer ends with "<segment>/..", that is also replaced
+	        // with "/".  Note that <segment> may be empty.
+	        while ((index = normalized.indexOf("/../")) != -1) {
+	            int slashIndex = normalized.lastIndexOf('/', index - 1);
+	            if (slashIndex >= 0) {
+	                break;
+	            } else {
+	                normalized = normalized.substring(index + 3);
+	            }
+	        }
+	        if (normalized.endsWith("/..")) {
+	            int slashIndex = normalized.lastIndexOf('/', normalized.length() - 4);
+	            if (slashIndex < 0) {
+	                normalized = "/";
+	            }
+	        }
+	 
+	        return normalized;
+	}
+	//used when creating incoming edges for traversal graph
+	public void addToInEdges(String toadd){
+		inEdges.add(toadd);
+	}
+	public HashSet<String> getInEdges(){
+		return inEdges;
+	}
+	//return URL of task
+	public String getURL() {
+		String returner = null;
+		  synchronized(URL){
+			  returner = URL;	
+		  }
+		return returner;
+	}
+
+	public String getName() {
+		return name;
+	}
+	public Task getParent() {
+		Task returner;
+		synchronized(parent){
+			returner = parent;
+		}
+		return returner;
+	}
+	  @Override
+	  public String toString() {
+		  if(parent == null){
+			  return new String("Parent:" + "root" + " URL:" + URL);
+		  }
+		  else{
+			  return new String("Parent:" + parent.getURL() + " URL:" + URL);
+		  }
+	  }
+	public LinkedList<Task> getChildren() {
+		LinkedList<Task> returner;
+		synchronized(children){
+			returner = children;
+		}
+		return returner;
+	}
+	public LinkedList<String> getBrokenLinks() {
+		return brokenLinks;
+	}
+	//DEBUG
+	public static void main(String args[]) {
+//		Task test = new Task(args[0], args[0], Integer.parseInt(args[1]));
+//		List<Task> printer = test.execute();
+//		String directory = "/tmp/cs455-tylerjms/";
+//		for(Task print : printer){
+//			try {
+//				String edittedURL = print.getURL().replace("http://", "");
+//				edittedURL = edittedURL.replace("/", "-");
+//				Path pathToFile = Paths.get(directory + edittedURL + "/test.txt");
+//				Files.createDirectories(pathToFile.getParent());
+//				Files.createFile(pathToFile);
+//			} catch (IOException e) {
+//				// TODO Auto-generated catch block
+//				e.printStackTrace();
+//			}
+//			
+//		}
+
+	}
+
+}
